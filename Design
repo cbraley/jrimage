@@ -1,0 +1,19 @@
+
+
+
+
+tempalte<class PixelT>
+class ImageView : public ImageViewBase<ImageView<PixelT>> {
+ 
+  Pixel* pixel_data;
+
+};
+
+
+template<class Impl>
+class ImageViewBase {
+ public:
+  
+};
+
+

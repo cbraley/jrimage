@@ -2,8 +2,5 @@
 
 namespace jr {
 
-
-
 }  // namespace jr
-
 

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstring>
 #include <cstdint>
+#include <memory>
 
 #include <algorithm>
 #include <iostream>
@@ -16,8 +17,8 @@ namespace jr {
 namespace mem_utils {
 
 /// Return true if the two arrays are different.  Optionally, we can return the
-/// index of the first difference via the diff_index parameter.  If the arrays are
-/// the output value of diff_index is undefined.
+/// index of the first difference via the diff_index parameter.  If the arrays
+/// differ, the output value of diff_index is undefined.
 template<typename T>
 bool ArraysAreDifferent(const T* const buffer_a, const T* const buffer_b,
                         std::size_t num_elements,
