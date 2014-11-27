@@ -9,8 +9,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Source files for jrimage (excluding tests, benchmarks, and files w/ main()).
 set(SRC_FILES src/jrimage.cc src/mem_utils.cc src/jrimage_color.cc)
-file(GLOB TEST_SRCS tests/*tests.cc)  # Source files containing tests.
-file(GLOB BENCHMARK_SRCS benchmarks/*benchmarks.cc)  # Source files containing benchmarks.
+file(GLOB TEST_SRCS tests/*tests.cc)  # Src files containing tests.
+file(GLOB BENCHMARK_SRCS benchmarks/*benchmarks.cc)  # Src files w/ benchmarks.
 
 # Source files containing each main(...) function.
 set(MAIN_SRC_UNIT_TESTS tests/main_unit_tests.cc)
@@ -29,7 +29,8 @@ elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
   message(STATUS "RELEASE mode build.")
   set(BTAG "release")
 else()
-  message(STATUS "Unrecognized or unset build type.  Defaulting to Release mode.")
+  message(STATUS "Unrecognized or unset build type.")
+  message(STATUS "Defaulting to Release mode.")
   set(BTAG "release")
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -53,8 +54,6 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -DDEBUG")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=float-divide-by-zero")
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -funroll-loops -march=native -msse3 -DNDEBUG")
-
-# TODO(cbraley): Verify that the build is working.
 
 # Dependencies. ---------------------------------------------------------------
 
