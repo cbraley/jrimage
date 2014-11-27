@@ -14,11 +14,11 @@ class CTMat3x3 {
       NumericT mat_r2_c0, NumericT mat_r2_c1, NumericT mat_r2_c2);
 
   constexpr NumericT operator()(const int r, const int c) const;
+  constexpr double GetD(const int r, const int c) const;
 
  private:
-  NumericT data_[9];
+  const NumericT data_[9];
 };
-
 
 
 // Compile time 3x3 matrix multiplication.
@@ -45,7 +45,7 @@ constexpr CTMat3x3<OutNumericT> ConvertType(const CTMat3x3<InNumericT> &mat);
 
 // Compile time matrix inversion.
 template<typename NumericT>
-constexpr CTMat3x3<NumericT> Inverse(constexpr CTMat3x3<NumericT> &mat);
+constexpr CTMat3x3<NumericT> Inverse(const CTMat3x3<NumericT> &mat);
 
 
 // Function definitions only beyond this line. --------------------------------
@@ -63,6 +63,11 @@ template<typename NumericT>
 constexpr NumericT CTMat3x3<NumericT>::operator()(const int r,
                                                   const int c) const {
   return data_[r * 3 + c];
+}
+
+template <typename NumericT>
+constexpr double CTMat3x3<NumericT>::GetD(const int r, const int c) const {
+  return double((*this)(r, c));
 }
 
 template<typename NumericT>
@@ -109,36 +114,29 @@ constexpr CTMat3x3<NumericT> operator*(const CTMat3x3<NumericT> &lhs,
 
 template<typename NumericT>
 constexpr NumericT Determinant(const CTMat3x3<NumericT> &mat) {
-  return (mat(0, 0) * mat(1, 1) * mat(2, 2) +
-          mat(0, 1) * mat(1, 2) * mat(2, 0) +
-          mat(0, 2) * mat(1, 0) * mat(2, 1)) -
-         (mat(0, 0) * mat(1, 2) * mat(2, 1) +
-          mat(0, 1) * mat(1, 0) * mat(2, 2) +
-          mat(0, 2) * mat(1, 1) * mat(2, 0));
+  return NumericT(
+         (mat.GetD(0, 0) * mat.GetD(1, 1) * mat.GetD(2, 2) +
+          mat.GetD(0, 1) * mat.GetD(1, 2) * mat.GetD(2, 0) +
+          mat.GetD(0, 2) * mat.GetD(1, 0) * mat.GetD(2, 1)) -
+         (mat.GetD(0, 0) * mat.GetD(1, 2) * mat.GetD(2, 1) +
+          mat.GetD(0, 1) * mat.GetD(1, 0) * mat.GetD(2, 2) +
+          mat.GetD(0, 2) * mat.GetD(1, 1) * mat.GetD(2, 0)));
 }
 
 template<typename NumericT>
-constexpr CTMat3x3<NumericT> Inverse(constexpr CTMat3x3<NumericT> &mat) {
-
-  constexpr NumericT A(mat(1,1) * mat(2,2) - mat(1,2) * mat(2,1));
-  constexpr NumericT D = -(mat(0,1) * mat(2,2) - mat(0,2) * mat(2,1));
-  constexpr NumericT G = (mat(0,1) * mat(1,2) - mat(0,2) * mat(1,1));
-  constexpr NumericT B = -(mat(1,0) * mat(2,2) - mat(1,2) * mat(2,0));
-  constexpr NumericT E = (mat(0,0) * mat(2,2) - mat(0,2) * mat(2,0));
-  constexpr NumericT H = -(mat(0,0) * mat(1,2) - mat(0,2) * mat(1,0));
-  constexpr NumericT C = (mat(1,0) * mat(2,1) - mat(1,1) * mat(2,0));
-  constexpr NumericT F = -(mat(0,0) * mat(2,1) - mat(0,1) * mat(2,0));
-  constexpr NumericT I = (mat(0,0) * mat(1,1) - mat(0,1) * mat(1,0));
-
-  constexpr CTMat3x3<double> cof_mat(
-      A, D ,G,
-      B, E, H,
-      C, F, I
-  );
-
+constexpr CTMat3x3<NumericT> Inverse(const CTMat3x3<NumericT> &mat) {
   return ConvertType<double, NumericT>(
-    (1.0 / Determinant(ConvertType<NumericT, double>(mat))) * 
-    cof_mat);
+      (1.0 / Determinant(ConvertType<NumericT, double>(mat))) *
+      CTMat3x3<double>(
+       (mat.GetD(1, 1) * mat.GetD(2, 2) - mat.GetD(1, 2) * mat.GetD(2, 1)),
+      -(mat.GetD(0, 1) * mat.GetD(2, 2) - mat.GetD(0, 2) * mat.GetD(2, 1)),
+       (mat.GetD(0, 1) * mat.GetD(1, 2) - mat.GetD(0, 2) * mat.GetD(1, 1)),
+      -(mat.GetD(1, 0) * mat.GetD(2, 2) - mat.GetD(1, 2) * mat.GetD(2, 0)),
+       (mat.GetD(0, 0) * mat.GetD(2, 2) - mat.GetD(0, 2) * mat.GetD(2, 0)),
+      -(mat.GetD(0, 0) * mat.GetD(1, 2) - mat.GetD(0, 2) * mat.GetD(1, 0)),
+       (mat.GetD(1, 0) * mat.GetD(2, 1) - mat.GetD(1, 1) * mat.GetD(2, 0)),
+      -(mat.GetD(0, 0) * mat.GetD(2, 1) - mat.GetD(0, 1) * mat.GetD(2, 0)),
+       (mat.GetD(0, 0) * mat.GetD(1, 1) - mat.GetD(0, 1) * mat.GetD(1, 0))));
 }
 
 }  // namespace jr

@@ -6,7 +6,19 @@
 
 #include "compile_time_matrix_mul.h"
 
+// All of the tests in this file are executed at *compile time*.
+
 namespace {
+
+template<typename T>
+constexpr T Abs(const T& v) {
+  return v < 0 ? -v : v;
+}
+
+template<typename T>
+constexpr bool Close(const T& a, const T& b, const T& max_diff) {
+  return Abs(a - b) < max_diff;
+}
 
 TEST(CompileTimeMatrixMultiplication, MatConstruct) {
   constexpr jr::CTMat3x3<double> identity(1, 0, 0, 0, 1, 0, 0, 0, 1);
@@ -27,7 +39,7 @@ TEST(CompileTimeMatrixMultiplication, MatConstruct) {
 }
 
 TEST(CompileTimeMatrixMultiplication, CompileTimeMatScalarMul) {
-  constexpr jr::CTMat3x3<float> A = 
+  constexpr jr::CTMat3x3<float> A =
       jr::CTMat3x3<float>(1, 2, 3,
                           3, 2, 1,
                           2, 1, 3) * 3.0f;
@@ -56,15 +68,36 @@ TEST(CompileTimeMatrixMultiplication, CompileTimeMatMul) {
 }
 
 TEST(CompileTimeMatrixMultiplication, CompileTimeInversion) {
-  constexpr double INVERSION_EPSILON = 1e-12;
+  constexpr double INVERSION_EPSILON = 1e-4;
   constexpr jr::CTMat3x3<double> A(
       -1, -2, -3,
       4, 5, 6,
       12, 13, -14);
-  constexpr jr::CTMat3x3<double> A_inv = Inverse(A);
-  EXPECT_NEAR(A_inv(0, 0), 1.12, INVERSION_EPSILON);
-}
+  constexpr jr::CTMat3x3<double> A_inv_expected(
+      37. / 21., 67. / 84., -1. / 28.,
+      -32. / 21., -25. / 42, 1. / 14.,
+      2. / 21., 11. / 84., -1. / 28.);
 
+  constexpr jr::CTMat3x3<double> A_inv = Inverse(A);
+  static_assert(Close(A_inv(0, 0), A_inv_expected(0, 0), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(0, 1), A_inv_expected(0, 1), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(0, 2), A_inv_expected(0, 2), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(1, 0), A_inv_expected(1, 0), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(1, 1), A_inv_expected(1, 1), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(1, 2), A_inv_expected(1, 2), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(2, 0), A_inv_expected(2, 0), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(2, 1), A_inv_expected(2, 1), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+  static_assert(Close(A_inv(2, 2), A_inv_expected(2, 2), INVERSION_EPSILON),
+                "Matrix Inv code incorrect.");
+}
 
 TEST(CompileTimeMatrixMultiplication, CompileTimeDeterminant) {
   constexpr jr::CTMat3x3<int> A(
