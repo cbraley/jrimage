@@ -4,7 +4,7 @@
 
 #include "gtest/gtest.h"
 
-#include "compile_time_matrix_mul.h"
+#include "matrix_3x3.h"
 
 // All of the tests in this file are executed at *compile time*.
 
@@ -20,7 +20,7 @@ constexpr bool Close(const T& a, const T& b, const T& max_diff) {
   return Abs(a - b) < max_diff;
 }
 
-TEST(CompileTimeMatrixMultiplication, MatConstruct) {
+TEST(CompileTimeMatrix3x3, MatConstruct) {
   constexpr jr::CTMat3x3<double> identity(1, 0, 0, 0, 1, 0, 0, 0, 1);
   static_assert(identity(0, 0) == 1, ".");
   static_assert(identity(1, 1) == 1, ".");
@@ -38,7 +38,7 @@ TEST(CompileTimeMatrixMultiplication, MatConstruct) {
     1, 2, 3);
 }
 
-TEST(CompileTimeMatrixMultiplication, CompileTimeMatScalarMul) {
+TEST(CompileTimeMatrix3x3, CompileTimeMatScalarMul) {
   constexpr jr::CTMat3x3<float> A =
       jr::CTMat3x3<float>(1, 2, 3,
                           3, 2, 1,
@@ -46,7 +46,7 @@ TEST(CompileTimeMatrixMultiplication, CompileTimeMatScalarMul) {
   static_assert(A(1,1) == 6, "Mat * scalar code incorrect.");
 }
 
-TEST(CompileTimeMatrixMultiplication, CompileTimeMatMul) {
+TEST(CompileTimeMatrix3x3, CompileTimeMatMul) {
   constexpr jr::CTMat3x3<float> A(
       1, 2, 3,
       3, 2, 1,
@@ -67,7 +67,7 @@ TEST(CompileTimeMatrixMultiplication, CompileTimeMatMul) {
   static_assert(AxB(2, 2) == 31, "Mat mul code incorrect.");
 }
 
-TEST(CompileTimeMatrixMultiplication, CompileTimeInversion) {
+TEST(CompileTimeMatrix3x3, CompileTimeInversion) {
   constexpr double INVERSION_EPSILON = 1e-4;
   constexpr jr::CTMat3x3<double> A(
       -1, -2, -3,
@@ -99,7 +99,7 @@ TEST(CompileTimeMatrixMultiplication, CompileTimeInversion) {
                 "Matrix Inv code incorrect.");
 }
 
-TEST(CompileTimeMatrixMultiplication, CompileTimeDeterminant) {
+TEST(CompileTimeMatrix3x3, CompileTimeDeterminant) {
   constexpr jr::CTMat3x3<int> A(
       44, 33, 22,
       1, 6, -2,

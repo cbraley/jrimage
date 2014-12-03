@@ -1,15 +1,17 @@
 #ifndef JRIMAGE_COLOR_H_
 #define JRIMAGE_COLOR_H_
 
-#include <array>
 #include <algorithm>
 #include <iostream>
 #include <cassert>
 #include <type_traits>
 
 #include "template_utils.h"
+#include "matrix_3x3.h"
 
 namespace jr {
+
+// TODO(cbraley): Lookup tables for uchar conversions.  Are they faster?
 
 // Templated color class.  The type ColorSpaceT describes the color space that is
 // used, and ChannelT describes the level of precision used to store each color
@@ -37,14 +39,10 @@ class Color {
       ChannelT, float>::type WorkingChannelTypeT;
 
   // Default constructor.  Creates a color with all 0s.
-  Color() {
-    SetAllTo(ChannelT(0.0));
-  }
+  Color() { SetAllTo(ChannelT(0.0)); }
 
   // Set all pixel values to a single value.
-  void SetAllTo(ChannelT value) {
-    std::fill(values, values + 3, value);
-  }
+  void SetAllTo(ChannelT value) { std::fill(values, values + 3, value); }
 
   // 3 color values.
   ChannelT values[3];  // 32 * 3
@@ -56,8 +54,8 @@ class Color {
                 "Colors only work with fundamental numeric types");
 };
 
-// A color transformation matrix is stored as a 3x3 std::array of doubles.
-typedef std::array<std::array<double, 3>, 3> ColorTransformationMat;
+// 3x3 color transformation matrix.
+typedef CTMat3x3<double> ColorTransformationMat;
 
 // CIE XYZ color space.
 class ColorSpaceXYZ {
@@ -73,10 +71,10 @@ class ColorSpaceXYZ {
   // identity matrix.  Note that we use template specializations
   // in most cases to avoid multiplying by the identity matrix when
   // such a decision can be made at compile time.
-  static constexpr ColorTransformationMat MATRIX_TO_XYZ = {{
-      {1.0, 0.0, 0.0},
-      {0.0, 1.0, 0.0},
-      {0.0, 0.0, 1.0}}};
+  static constexpr ColorTransformationMat MATRIX_TO_XYZ = ColorTransformationMat(
+      1.0, 0.0, 0.0,
+      0.0, 1.0, 0.0,
+      0.0, 0.0, 1.0);
 };
 
 
@@ -199,34 +197,17 @@ void ColorConvertImpl(
   // CS1 and CS2 to XYZ color.  If we form the matrix:
   // Mconv = M1 * M2, then we can use Mconv to convert between CS1 and CS2.
   typedef typename Color<ColorSpaceFrom, ChannelT>::WorkingChannelTypeT WorkingT;
-  std::array<std::array<WorkingT, 3>, 3> color_conv_matrix;
-  // TODO(cbraley): Both of these matrices are known at compile time, so we
-  // could do this matrix multiplication at compile time.
-  for (int r = 0; r < 3; ++r) {
-    for (int c = 0; c < 3; ++c) {
-      double accum = 0.0;
-      for (int m = 0; m < 3; ++m) {
-        accum += ColorSpaceFrom::MATRIX_TO_XYZ[r][m] *
-                 ColorSpaceTo::MATRIX_TO_XYZ[m][c];
-      }
-      color_conv_matrix[r][c] = WorkingT(accum);
-    }
-  }
+  constexpr ColorTransformationMat color_conv_matrix =
+      ColorSpaceFrom::MATRIX_TO_XYZ * Inverse(ColorSpaceTo::MATRIX_TO_XYZ);
 
   // Perform N=count matrix multiplies.
-  // TODO(cbraley): Speed this up with SEE intrinsics.
+  // TODO(cbraley): Speed this upwith SEE intrinsics.
   for (int i = 0; i < count; ++i) {
     const ChannelT *from_data_ptr = from_data[i].values;
     ChannelT* to_data_ptr = to_data[i].values;
 
-    // Perform a matrix-vector multiply.
-    for (int r = 0; r < 3; ++r) {
-      WorkingT accum(0.0);
-      for (int c = 0; c < 3; ++c) {
-        accum += color_conv_matrix[r][c] * from_data_ptr[c];
-      }
-      to_data_ptr[r] = accum;
-    }
+    MatrixTimesVector<ChannelT, WorkingT>(color_conv_matrix, from_data_ptr,
+                                          to_data_ptr);
   }
 }
 
@@ -264,7 +245,7 @@ void ColorConvertImpl(
     // Perform a matrix multiplication to convert to the destination color
     MatrixTimesVector<ChannelT,
                       Color<ColorSpaceTo, ChannelT>::WorkingChannelTypeT>(
-        Color<ColorSpaceTo, ChannelT>::MATRIX_TO_XYZ,  // TODO(cbraley): Invert!
+        Inverse(Color<ColorSpaceTo, ChannelT>::MATRIX_TO_XYZ),
         xyz.values,
         to_data[i].values);
   }
@@ -286,13 +267,12 @@ void MatrixTimesVector(const ColorTransformationMat &mat,
   for (int r = 0; r < 3; ++r) {
     WorkingChannelTypeT accum(0.0);
     for (int c = 0; c < 3; ++c) {
-      accum += mat[r][c] * vector[c];
+      accum += mat(r,c) * vector[c];
     }
     // TODO(cbraley): Saturate!
     out_vector[r] = ChannelT(accum);
   }
 }
-
 
 }  // namespace implementation_details
 
