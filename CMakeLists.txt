@@ -30,9 +30,11 @@ elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
   set(BTAG "release")
 else()
   message(STATUS "Unrecognized or unset build type.")
-  message(STATUS "Defaulting to Release mode.")
-  set(BTAG "release")
-  set(CMAKE_BUILD_TYPE Release)
+  message(STATUS "Possible build types include {Release, Debug}.")
+  message(STATUS "To build in mode X, invoke cmake like: \"cmake -DCMAKE_BUILD_TYPE=X ..\".")
+  message(STATUS "Defaulting to Debug mode.")
+  set(BTAG "debug")
+  set(CMAKE_BUILD_TYPE Debug)
 endif()
 
 #  Set mode-dependent compiler flags.
@@ -41,12 +43,12 @@ set(CMAKE_CXX_FLAGS_RELEASE "-fno-strict-aliasing -O3 -DNDEBUG")
 
 # Set compiler flags for each build confg.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -Wunused-parameter")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -Wunused-parameter -Wno-unused-variable -Wno-unused-parameter")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fshow-source-location -fcaret-diagnostics")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcolor-diagnostics")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-format=vi")
 
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -DDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -DDEBUG")
 
 # TODO(cbraley): Turn back on address sanitizer once Apple ships an updated Clang.
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=alignment")

@@ -14,7 +14,45 @@ TEST(JRImageBuf_Allocators, PixelSetters) {
   jr::ImageBuf<float, 3, jr::AlignedAllocator<float>> a;
 }
 
-/*
+
+TEST(JRImageBuf, AllocateReallocation) {
+  // Construct an image.
+  jr::ImageBuf<double> image(100, 200, 4);
+  EXPECT_EQ(100, image.Width());
+  EXPECT_EQ(200, image.Height());
+  EXPECT_EQ(4, image.Channels());
+  EXPECT_TRUE(image.IsChannelCountDynamic());
+  EXPECT_FALSE(image.IsChannelCountStatic());
+
+  // Reallocate it to a new size.
+  image.Allocate(10, 400, 5);
+  EXPECT_EQ(10, image.Width());
+  EXPECT_EQ(400, image.Height());
+  EXPECT_EQ(5, image.Channels());
+  EXPECT_TRUE(image.IsChannelCountDynamic());
+  EXPECT_FALSE(image.IsChannelCountStatic());
+
+  // Reallocate it to *the same* size.
+  image.Allocate(10, 400, 5);
+  EXPECT_EQ(10, image.Width());
+  EXPECT_EQ(400, image.Height());
+  EXPECT_EQ(5, image.Channels());
+  EXPECT_TRUE(image.IsChannelCountDynamic());
+  EXPECT_FALSE(image.IsChannelCountStatic());
+}
+
+
+TEST(JRImageBuf_Stress, MemoryBugRepro) {
+  jr::ImageBuf<float> image(100, 200, 4);
+  image.Allocate(2, 4, 4);
+  EXPECT_EQ(image.Width(), 2);
+  EXPECT_EQ(image.Height(), 4);
+  EXPECT_EQ(image.Channels(), 4);
+  EXPECT_TRUE(image.InBounds(0, 2, 2));
+  EXPECT_EQ(image.Width(), 2);
+  EXPECT_EQ(image.Height(), 4);
+  EXPECT_EQ(image.Channels(), 4);
+}
 
 // Set random pixel values many times and make sure we can read the
 // same values back.
@@ -27,10 +65,16 @@ TEST(JRImageBuf_Stress, PixelSetters) {
   std::uniform_int_distribution<> width_dist(1, 10);
   std::uniform_int_distribution<> height_dist(1, 10);
 
-  const int NUM_TRIALS = 1000;
+  const int NUM_TRIALS = 100;
   const int NUM_PIXELS = 1000;
   for (int i = 0; i < NUM_TRIALS; ++i) {
-    image.Allocate(width_dist(gen), height_dist(gen), channel_dist(gen));
+    const int new_w = width_dist(gen);
+    const int new_h = height_dist(gen);
+    const int new_c = channel_dist(gen);
+    image.Allocate(new_w, new_h, new_c);
+    ASSERT_EQ(new_w, image.Width());
+    ASSERT_EQ(new_h, image.Height());
+    ASSERT_EQ(new_c, image.Channels());
 
     std::uniform_int_distribution<> x_dist(0, image.Width() - 1);
     std::uniform_int_distribution<> y_dist(0, image.Height() - 1);
@@ -39,10 +83,24 @@ TEST(JRImageBuf_Stress, PixelSetters) {
     float buf[100];
     float buf2[100];
     for (int j = 0; j < NUM_PIXELS; ++j) {
+      ASSERT_EQ(new_w, image.Width());
+      ASSERT_EQ(new_h, image.Height());
+      ASSERT_EQ(new_c, image.Channels());
+
       const int x = x_dist(gen);
       const int y = y_dist(gen);
       const int c = c_dist(gen);
-      EXPECT_TRUE(image.InBounds(x, y, c));
+      ASSERT_GE(x, 0);
+      ASSERT_GE(y, 0);
+      ASSERT_GE(c, 0);
+      ASSERT_LE(x, image.Width() - 1);
+      ASSERT_LE(y, image.Height() - 1);
+      ASSERT_LE(c, image.Channels() - 1);
+
+      ASSERT_TRUE(image.InBounds(x, y, c))
+          << "(" << x << ", " << y << ", " << c << ") out of bounds "
+          << "for an image with dims " << image.Width() << ", "
+          << image.Height() << ", " << image.Channels();
 
       // First, set a single channel.
       const float value = values(gen);
@@ -117,6 +175,7 @@ float F(int x, int y, int c) {
          static_cast<float>(c * y * 2.0f);
 }
 
+/*
 TEST(JRImageBuf, ImageBufResizing) {
   jr::ImageBuf<uint32_t> gold(100, 200, 4);
   SampleFuncIntoImageBuf<uint32_t, jr::DYNAMIC_CHANNELS>(F, gold);
@@ -144,6 +203,7 @@ TEST(JRImageBuf, ImageBufResizing) {
   dest_dynamic.Resize(5, 13, 2);
   EXPECT_EQ(resized_two_chan_gold, dest_dynamic);
 }
+*/
 
 TEST(JRImageBuf, ImageBufCopying) {
   {
@@ -191,7 +251,6 @@ TEST(JRImageBuf, ImageBufCopying) {
   }
 }
 
-*/
 
 }  // anonymous namespace
 
