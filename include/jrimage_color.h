@@ -12,10 +12,11 @@
 namespace jr {
 
 // TODO(cbraley): Lookup tables for uchar conversions.  Are they faster?
+// TODO(cbraley): Typedefs for common ChannelTs.
 
-// Templated color class.  The type ColorSpaceT describes the color space that is
-// used, and ChannelT describes the level of precision used to store each color
-// measurement.
+// Templated color class.  The type ColorSpaceT describes the color space that
+// is used, and ChannelT describes the level of precision used to store each
+// color measurement.
 // Template argument requirements:
 //   - The template type ColorSpaceT must be a valid ColorSpace type.
 //     See the documentation TODO(here) for more info.

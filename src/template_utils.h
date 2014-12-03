@@ -8,6 +8,13 @@
 namespace jr {
 namespace template_utils {
 
+// TODO(cbraley): Merge in code from jrimage_old!!!!
+
+template<typename IntegerT, IntegerT power> 
+constexpr IntegerT Power(IntegerT input) {
+  return input * Power<IntegerT, power - 1>(input);
+}
+
 /*
 // Using ArithmeticWorkingType<Foo>::WorkingTypeT
 // you can get an apprioriate numeric type that can be

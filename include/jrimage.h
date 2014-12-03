@@ -34,21 +34,35 @@ const constexpr int DYNAMIC_CHANNELS = -1;
 ///     PixelT
 ///   The following functions are provided:
 ///     int Channels() const
+///     constexpr bool IsChannelCountDynamic() const
+///     int Width() const;
+///     int Height() const;
+///
+///
 ///   TODO(cbraley): Complete this doc.
 template<typename ImageImplT>
 class ImageBase {
  public:
   inline int Width() const { return Impl().Width(); }
-  inline int Height() const { return Impl().Width(); }
+  inline int Height() const { return Impl().Height(); }
   inline int Channels() const { return Impl().Channels(); }
 
+  inline int NumPixels() const { return Width() * Height(); }
+
+
   // Testing if X and Y coordinates are in bounds.
-  inline bool InBounds(int x, int y, int c) const { return InBounds(x, y) && c >= 0 && c < Channels(); }
-  inline bool InBounds(int x, int y) const { return x >= 0 && y >= 0 && x < Width() && y < Height(); }
-  
+  inline bool InBounds(int x, int y, int c) const {
+    return InBounds(x, y) && c >= 0 && c < Channels();
+  }
+  inline bool InBounds(int x, int y) const {
+    return x >= 0 && y >= 0 && x < Width() && y < Height();
+  }
+
   // Clamping X and Y coordinates to be within bounds.
   inline int ClampX(int x) const { return std::min(std::max(0, x), Width() - 1); }
   inline int ClampY(int y) const { return std::min(std::max(0, y), Height() - 1); }
+
+  constexpr bool IsChannelCountStatic() const { return !Impl().IsChannelCountDynamic(); }
 
  private:
   // The helper functions Impl(...) cast the "this" pointer to an instance
@@ -65,6 +79,7 @@ class ImageBase {
   ImageBase& operator=(const ImageBase&) = delete;
 
  protected:
+
   // No default construction (or construction of any kind) is allowed, since
   // this class is the base of a CRTP hierarchy.
   ImageBase() {}
@@ -99,7 +114,7 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   // ChannelCountKnownAtCompileTime is true_type if we know the channel count
   // at compile time, or false_type otherwise.
   typedef typename std::conditional<NumChannels != DYNAMIC_CHANNELS,
-                                    std::true_type, std::false_type>::type 
+                                    std::true_type, std::false_type>::type
                                     ChannelCountKnownAtCompileTime;
   // Constructors.
 
@@ -120,12 +135,11 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   // Implementation of the interface required by the CRTP base class ImageBase.
   inline int Width() const { return w_; }
   inline int Height() const { return h_; }
+  constexpr bool IsChannelCountDynamic() const { return NumChannels == DYNAMIC_CHANNELS; }
   inline int Channels() const {
-    return NumChannels == DYNAMIC_CHANNELS ? c_ : NumChannels;
+    return IsChannelCountDynamic() ? c_ : NumChannels;
   }
-  constexpr bool IsChannelCountDynamic() const {
-    return NumChannels == DYNAMIC_CHANNELS;
-  }
+
 
   inline bool IsMemoryContiguous() const { return contiguous_; }
 
@@ -299,27 +313,34 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
       */
   }
 
+  // TODO(cbraley): Disable the new_c param for the situation where the count is
+  // static.
   void Allocate(int new_w, int new_h, int new_c) {
-    new_c = NumChannels == DYNAMIC_CHANNELS ? new_c : NumChannels;
+    assert(new_w >= 0);
+    assert(new_h >= 0);
+    AssertInvariants();
+    if (this->IsChannelCountStatic()) {
+      assert(new_c == Channels());
+      new_c = Channels();
+    } else {
+      assert(this->IsChannelCountDynamic());
+      assert(new_c > 0);
+    }
 
     // Store size of old data.
     const std::size_t old_data_numel = data_numel_ ;
 
     // Compute size needed for new data.
     const std::size_t row_data_bytes = new_w * new_c * sizeof(T);
-    //const std::size_t row_data_with_padding =
-    //    jr::math_utils::UpToNearestMultiple(row_data_bytes, ROW_BYTE_ALIGNMENT);
-    const std::size_t row_data_with_padding = row_data_bytes;
-    const std::size_t total_bytes = row_data_with_padding * new_h;
+    const std::size_t total_bytes = row_data_bytes * new_h;
     assert(total_bytes % sizeof(T) == 0);
 
-    data_numel_ = total_bytes / sizeof(T);
-    const std::size_t new_row_stride = row_data_with_padding / sizeof(T);
+    data_numel_= new_w * new_h * new_c;
+    assert(data_numel_ == total_bytes / sizeof(T));
+    const std::size_t new_row_stride = new_w * new_c;
 
     // Allocate new memory.
     T* new_buf = allocator_.allocate(data_numel_);
-    //T* new_buf = new T[new_size];
-    //T* new_buf = jr::mem_utils::AlignedNew<T>(new_size, BUF_BYTE_ALIGNMENT);
 
     // We are *required* to memset all the newly allocated memory to 0.  This
     // is necessary since we memcmp buffers to compare images.  If we don't
@@ -329,8 +350,6 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
 
     if (owns_data_) {
       allocator_.deallocate(buf_, old_data_numel);
-      //jr::mem_utils::AlignedDelete<T>(buf_);
-      //delete[] buf_;
     }
     buf_ = new_buf;
 
@@ -345,7 +364,7 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   int w_, h_, c_;
   T* buf_;
   bool owns_data_;
-  std::size_t data_numel_;
+  std::size_t data_numel_;  // Width() * Height() * Channels()
   Allocator allocator_;
 
   // Stride between rows in terms of T's.
@@ -353,6 +372,14 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
 
   // True if the image's memory is contiguous.
   bool contiguous_;
+
+  inline void AssertInvariants() const {
+    if (Width() >= 0 && Height() >= 0 && Channels() >= 0) {
+      assert(data_numel_ == Width() * Height() * Channels());
+    } else {
+      assert(buf_ == nullptr);
+    }
+  }
 
   // Exclusive of padding.
   inline std::size_t RowByteCount() const {
@@ -393,11 +420,19 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
 template <typename T, int NumChannels, typename Allocator>
 std::ostream& operator<<(std::ostream& os, const ImageBuf<T, NumChannels, Allocator>& image) {
   os << "ImageBuf with width=" << image.Width() << ", height=" << image.Height()
-     << " and " << image.Channels()
-     << (image.IsChannelCountDynamic() ? " dynamic " : " ") << "channels."
-     << " row stride = " << image.row_stride_ << std::endl << "Pixel buffer: {"
-     << std::endl;
+     << " and " << image.Channels() << " "
+     << (image.IsChannelCountDynamic() ? "dynamic" : "static") << " channels."
+     << " row stride = " << image.row_stride_ << ". ";
 
+  // If there are too many pixels to reasonably look at, don't flood
+  // the contole.
+  static const int MAX_PIXELS_TO_PRINT = 50;
+  if (image.NumPixels() > MAX_PIXELS_TO_PRINT) {
+    os << "(pixel buffer too large to print)" << std::endl;
+    return os;
+  }
+
+  os << std::endl << "Pixel buffer: {" << std::endl;
   for (int y = 0; y < image.Height(); ++y) {
     os << "row " << y << ": ";
     for (int x = 0; x < image.Width(); ++x) {
