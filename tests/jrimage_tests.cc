@@ -14,6 +14,25 @@ TEST(JRImageBuf_Allocators, PixelSetters) {
   jr::ImageBuf<float, 3, jr::AlignedAllocator<float>> a;
 }
 
+TEST(JRImageBuf, DeepComparison) {
+  // Two images that point to the same thing are the same thing are the same.
+  jr::ImageBuf<unsigned char, 4> a, *b;
+  b = &a;
+  EXPECT_TRUE(a.Resize(100, 200, 4));
+  EXPECT_EQ(a, *b);
+
+  // Two images that are deep copies of each other should compare the same.
+  jr::ImageBuf<unsigned char, 4> c, d;
+  a.CopyInto(c);
+  a.CopyInto(d);
+  EXPECT_EQ(a, c);
+  EXPECT_EQ(*b, c);
+  EXPECT_EQ(a, d);
+  EXPECT_EQ(*b, d);
+
+  // TODO(cbraley): Test Subwindows.
+}
+
 
 TEST(JRImageBuf, AllocateReallocation) {
   // Construct an image.
