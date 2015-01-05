@@ -10,9 +10,16 @@ namespace template_utils {
 
 // TODO(cbraley): Merge in code from jrimage_old!!!!
 
-template<typename IntegerT, IntegerT power> 
+template<typename IntegerT, IntegerT power>
 constexpr IntegerT Power(IntegerT input) {
   return input * Power<IntegerT, power - 1>(input);
+}
+
+template<typename T>
+void SetIfNonNull(const T& to_set_to, T* ptr) {
+  if (ptr != nullptr) {
+    *ptr = to_set_to;
+  }
 }
 
 /*

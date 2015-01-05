@@ -14,6 +14,47 @@ TEST(JRImageBuf_Allocators, PixelSetters) {
   jr::ImageBuf<float, 3, jr::AlignedAllocator<float>> a;
 }
 
+TEST(JRImageBuf, Subwindows) {
+  jr::ImageBuf<int, 2> image(3, 2);
+  image.Set(0, 0, 0, 12);
+  image.Set(1, 0, 0, 13);
+  image.Set(2, 0, 0, 14);
+  image.Set(0, 1, 0, 2);
+  image.Set(1, 1, 0, 3);
+  image.Set(2, 1, 0, 4);
+
+  image.Set(0, 0, 1, 5);
+  image.Set(1, 0, 1, 6);
+  image.Set(2, 0, 1, 7);
+  image.Set(0, 1, 1, 8);
+  image.Set(1, 1, 1, 9);
+  image.Set(2, 1, 1, 10);
+
+  // channel 0
+  // [ 12  13   14 ]
+  // [  2   3    4 ]
+
+  // channel 1
+  // [ 5  6   7 ]
+  // [ 8  9  10 ]
+
+  EXPECT_EQ(image.Width(), 3);
+  EXPECT_EQ(image.Height(), 2);
+  EXPECT_EQ(image.Channels(), 2);
+
+  // Take a subwindow of full size.  This subwindow should contain 
+  // the same pixel data.
+  bool success = false;
+  jr::ImageBuf<int, 2> win = image.GetWindow(0, 0, 3, 2, &success);
+  EXPECT_TRUE(success);
+  EXPECT_EQ(image, win) << "Expected " << image << " == " << win;
+
+
+
+
+
+}
+
 TEST(JRImageBuf, DeepComparison) {
   // Two images that point to the same thing are the same thing are the same.
   jr::ImageBuf<unsigned char, 4> a, *b;
@@ -29,8 +70,8 @@ TEST(JRImageBuf, DeepComparison) {
   EXPECT_EQ(*b, c);
   EXPECT_EQ(a, d);
   EXPECT_EQ(*b, d);
-
-  // TODO(cbraley): Test Subwindows.
+  
+  // TODO(cbraley): Test subwindows.
 }
 
 
