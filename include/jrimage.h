@@ -301,7 +301,6 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
     window.c_ = c_;
     window.buf_ = GetPointer(x, y, 0);
     window.owns_data_ = false;
-    window.data_numel_ = width * height * Channels();  // TODO(cbraley): RM!
     window.allocator_ = allocator_;
     window.row_stride_ = row_stride_ + ((Width() - width) * Channels());
     return window;
@@ -342,7 +341,6 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   int w_, h_, c_;
   T* buf_;
   bool owns_data_;
-  std::size_t data_numel_;  // Width() * Height() * Channels()
   Allocator allocator_;
 
   // Stride between rows in terms of T's.
@@ -361,19 +359,19 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
     }
 
     // Store size of old data.
-    const std::size_t old_data_numel = data_numel_ ;
+    const std::size_t old_data_numel = Width() * Height() * Channels();
 
     // Compute size needed for new data.
     const std::size_t row_data_bytes = new_w * new_c * sizeof(T);
     const std::size_t total_bytes = row_data_bytes * new_h;
     assert(total_bytes % sizeof(T) == 0);
 
-    data_numel_= new_w * new_h * new_c;
-    assert(data_numel_ == total_bytes / sizeof(T));
+    const std::size_t data_numel = new_w * new_h * new_c;
+    assert(data_numel == total_bytes / sizeof(T));
     const std::size_t new_row_stride = new_w * new_c;
 
     // Allocate new memory.
-    T* new_buf = allocator_.allocate(data_numel_);
+    T* new_buf = allocator_.allocate(data_numel);
 
     // We are *required* to memset all the newly allocated memory to 0.  This
     // is necessary since we memcmp buffers to compare images.  If we don't
@@ -394,10 +392,10 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   }
 
   inline void AssertInvariants() const {
-    if (Width() >= 0 && Height() >= 0 && Channels() >= 0) {
-      assert(data_numel_ == Width() * Height() * Channels());
-    } else {
-      assert(buf_ == nullptr);
+    if (buf_ != nullptr) {
+      assert(Width() > 0);
+      assert(Height() > 0);
+      assert(Channels() > 0);
     }
   }
 
@@ -507,13 +505,12 @@ ImageBuf<T, NumChannels, Allocator>::ImageBuf()
       c_(-1),
       buf_(nullptr),
       owns_data_(true),
-      data_numel_(0),
       row_stride_(0) {}
 
 template <typename T, int NumChannels, typename Allocator>
 ImageBuf<T, NumChannels, Allocator>::~ImageBuf() {
   if (owns_data_) {
-    allocator_.deallocate(buf_, data_numel_);
+    allocator_.deallocate(buf_, Width() * Height() * Channels());
   }
 }
 
@@ -525,7 +522,6 @@ ImageBuf<T, NumChannels, Allocator>::ImageBuf(int width, int height,
       c_(num_channels),
       buf_(nullptr),
       owns_data_(true),
-      data_numel_(width * height * num_channels),
       row_stride_(0) {
   static_assert(NumChannels == DYNAMIC_CHANNELS,
                 "The ImageBuf(width, height, num_channels) constructor can "
@@ -543,7 +539,6 @@ ImageBuf<T, NumChannels, Allocator>::ImageBuf(int width, int height)
       c_(NumChannels),
       buf_(nullptr),
       owns_data_(true),
-      data_numel_(width * height * NumChannels),
       row_stride_(0) {
   static_assert(NumChannels != DYNAMIC_CHANNELS,
                 "The ImageBuf(width, height) constructor can "
