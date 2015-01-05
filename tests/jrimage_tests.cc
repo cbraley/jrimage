@@ -73,6 +73,19 @@ TEST(JRImageBuf_Stress, MemoryBugRepro) {
   EXPECT_EQ(image.Channels(), 4);
 }
 
+
+TEST(JRImageBuf, SimpleSetAllChannels) {
+  jr::ImageBuf<float> image(100, 200, 4);
+  const float TEST_VAL = 12.0f;
+  image.Set(12, 44, 2, TEST_VAL);
+  image.Set(12, 44, 0, 13);
+
+  float buf[4];
+  image.GetAllChannels(12, 44, buf);
+  EXPECT_EQ(TEST_VAL, buf[2]);
+  EXPECT_EQ(13, buf[0]);
+}
+
 // Set random pixel values many times and make sure we can read the
 // same values back.
 TEST(JRImageBuf_Stress, PixelSetters) {
@@ -128,20 +141,22 @@ TEST(JRImageBuf_Stress, PixelSetters) {
       jr::ImageBuf<float> le_copy;
       image.CopyInto(le_copy);
 
-      EXPECT_EQ(value, le_copy.Get(x, y, c));
+      ASSERT_EQ(value, le_copy.Get(x, y, c));
       le_copy.GetAllChannels(x, y, buf);
-      EXPECT_EQ(value, buf[c]);
+      ASSERT_EQ(value, buf[c]);
 
-      // Now, set all channgels.
+      // Now, set all channels.
       for (int chan = 0; chan < image.Channels(); ++chan) {
         buf[chan] = values(gen);
       }
       image.SetAllChannels(x, y, buf);
       for (int chan = 0; chan < image.Channels(); ++chan) {
-        EXPECT_EQ(buf[chan], image.Get(x, y, chan));
+        ASSERT_EQ(buf[chan], image.Get(x, y, chan))
+            << "Expected channel " << chan << " location ("
+            << x << ", " << y << ")";
       }
       image.GetAllChannels(x, y, buf2);
-      EXPECT_EQ(0, memcmp(static_cast<const void*>(buf),
+      ASSERT_EQ(0, memcmp(static_cast<const void*>(buf),
                           static_cast<const void*>(buf2),
                           image.Channels() * sizeof(float)));
     }

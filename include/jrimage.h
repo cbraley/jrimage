@@ -10,10 +10,6 @@
 #include <cstdint>
 #include <memory>
 
-// TODO(cbraley): Option for no SSE.
-#include <xmmintrin.h>
-#include <emmintrin.h>
-
 #include "mem_utils.h"
 #include "math_utils.h"
 
@@ -29,6 +25,9 @@ template<typename T, typename ColorSpace, typename Allocator> class Image;  // I
 /// Constant used to create an image with a dynamic channel count.
 const constexpr int DYNAMIC_CHANNELS = -1;
 
+// Traits class.  Each CTRP leaf node class must specialize ImageTraits.
+template<typename ImageT> struct ImageTraits;
+
 // Return true if the dimensions of two images match.
 template<typename ImageImplTA, typename ImageImplTB>
 bool DimensionsMatch(const ImageBase<ImageImplTA>& a, const ImageBase<ImageImplTB>& b);
@@ -41,21 +40,24 @@ template<typename ImageImplLhsT, typename ImageImplRhsT>
 bool operator==(const ImageBase<ImageImplLhsT> &lhs,
                 const ImageBase<ImageImplRhsT> &rhs);
 
+template<typename ImageImplT>
+std::ostream& operator<<(std::ostream& os, const ImageBase<ImageImplT>& image);
 
 
 /// CRTP base class for image classes.
 /// The template ImageImplT should be an Image class that meets the following
 /// requirements:
 ///   The following typedefs are provided:
-///     PixelT
+///     TODO(cbraley): This is all now via ImageTraits.
+///     ChannelT
+///     ChannelCountKnownAtCompileTime
 ///   The following functions are provided:
 ///     int Width() const;
 ///     int Height() const;
 ///     int Channels() const
-///     constexpr bool IsChannelCountDynamic() const
 ///     bool IsMemoryContiguous() const;
 ///     std::size_t PixelSizeBytes() const
-///     std::size_t TotalByteCount() const  
+///     std::size_t TotalByteCount() const
 ///
 ///     uint8_t* GetRow(int y)
 ///     const uint8_t* GetRow(int y) const
@@ -66,22 +68,27 @@ bool operator==(const ImageBase<ImageImplLhsT> &lhs,
 ///   TODO(cbraley): Complete this doc.
 template<typename ImageImplT>
 class ImageBase {
+ // TODO(cbraley): Can typedefs be private?
+ private:
+  typedef typename ImageTraits<ImageImplT>::ChannelT ImageImplChannelT;
+
  public:
+
   inline int Width() const { return Impl().Width(); }
   inline int Height() const { return Impl().Height(); }
   inline int Channels() const { return Impl().Channels(); }
   inline int NumPixels() const { return Width() * Height(); }
 
-  constexpr bool IsChannelCountStatic() const { return !Impl().IsChannelCountDynamic(); }
-  constexpr bool IsChannelCountDynamic() const { return Impl().IsChannelCountDynamic(); }
+  static constexpr bool IsChannelCountStatic() { return ImageTraits<ImageImplT>::ChannelCountKnownAtCompileTime::value; }
+  static constexpr bool IsChannelCountDynamic() { return !IsChannelCountStatic(); }
 
   inline bool IsMemoryContiguous() const { return Impl().IsMemoryContiguous(); }
 
   inline std::size_t PixelSizeBytes() const { return Impl().PixelSizeBytes(); }
   inline std::size_t TotalByteCount() const { return Impl().TotalByteCount(); }
-  inline unsigned char* GetRow(int y) { return reinterpret_cast<unsigned char*>(Impl().GetRow(y)); }
-  inline const unsigned char* GetRow(int y) const { return reinterpret_cast<const unsigned char*>(Impl().GetRow(y)); }
-  inline unsigned char* GetPointer(int x, int y, int c) const { return reinterpret_cast<unsigned char*>(Impl().GetPointer(x, y, c)); }
+  inline ImageImplChannelT* GetRow(int y) { return Impl().GetRow(y); }
+  inline const ImageImplChannelT* GetRow(int y) const { return Impl().GetRow(y); }
+  inline ImageImplChannelT* GetPointer(int x, int y, int c) const { return Impl().GetPointer(x, y, c); }
 
   inline bool Resize(int new_w, int new_h, int new_c) { return Impl().Resize(new_w, new_h, new_c); }
 
@@ -101,7 +108,35 @@ class ImageBase {
   inline int ClampX(int x) const { return std::min(std::max(0, x), Width() - 1); }
   inline int ClampY(int y) const { return std::min(std::max(0, y), Height() - 1); }
 
+  // Total number of measurements.
+  inline int Numel() const { return Width() * Height() * Channels(); }
 
+  void SetAll(const ImageImplChannelT& new_value) {
+    if (IsMemoryContiguous()) {
+      jr::mem_utils::SetMemory(GetRow(0), new_value, Numel());
+    } else {
+      for (int y = 0; y < Height(); ++y) {
+        ImageImplChannelT* row = GetRow(y);
+        jr::mem_utils::SetMemory(row, new_value, Width());
+      }
+    }
+  }
+
+  void GetAllChannels(int x, int y, ImageImplChannelT* out) const {
+    memcpy(static_cast<void*>(out),
+           static_cast<const void*>(GetPointer(x, y, 0)),
+           PixelSizeBytes());
+  }
+
+  void Set(int x, int y, int c, const ImageImplChannelT& val) {
+    *GetPointer(x, y, c) = val;
+  }
+
+  void SetAllChannels(int x, int y, const ImageImplChannelT* values) {
+    memcpy(static_cast<void*>(GetPointer(x, y, 0)),
+           static_cast<const void*>(values),
+           PixelSizeBytes());
+  }
 
   // More complex functions.
 
@@ -156,6 +191,18 @@ class ImageBase {
 
 
 
+template<typename T, int NumChannels, typename Allocator>
+struct ImageTraits<ImageBuf<T, NumChannels, Allocator>> {
+  // Primitive type used for a single channel.
+  typedef T ChannelT;
+
+  // ChannelCountKnownAtCompileTime is true_type if we know the channel count
+  // at compile time, or false_type otherwise.
+  typedef typename std::conditional<NumChannels != DYNAMIC_CHANNELS,
+                                    std::true_type, std::false_type>::type
+                                    ChannelCountKnownAtCompileTime;
+};
+
 /// Core templated image class.
 template <typename T,  // Primitive type stored in the array.
           int NumChannels = DYNAMIC_CHANNELS,  // Channel count, or DYNAMIC_CHANNELS.
@@ -174,18 +221,8 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
       "NumChannels must either be a positive integer, or be the special "
       "DYNAMIC value.");
 
-  // Typedefs.
-
-  // ChannelCountKnownAtCompileTime is true_type if we know the channel count
-  // at compile time, or false_type otherwise.
-  typedef typename std::conditional<NumChannels != DYNAMIC_CHANNELS,
-                                    std::true_type, std::false_type>::type
-                                    ChannelCountKnownAtCompileTime;
-
-  // TODO(cbraley): Private!
+  // TODO(Cbraley): RM?
   typedef ImageBuf<T, NumChannels, Allocator> SelfT;
-
-  typedef T PixelT;
 
   // Constructors.
 
@@ -206,9 +243,8 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   // Implementation of the interface required by the CRTP base class ImageBase.
   inline int Width() const { return w_; }
   inline int Height() const { return h_; }
-  constexpr bool IsChannelCountDynamic() const { return NumChannels == DYNAMIC_CHANNELS; }
   inline int Channels() const {
-    return IsChannelCountDynamic() ? c_ : NumChannels;
+    return SelfT::IsChannelCountDynamic() ? c_ : NumChannels;
   }
   inline bool IsMemoryContiguous() const { return Width() == row_stride_; }
 
@@ -224,39 +260,13 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   }
 
 
-  // Function definitions.
-  void SetAll(const T& new_value) {
-    if (IsMemoryContiguous()) {
-      jr::mem_utils::SetMemory(buf_, new_value, data_numel_);
-    } else {
-      for (int y = 0; y < Height(); ++y) {
-        T* row = GetRow(y);
-        jr::mem_utils::SetMemory(row, new_value, Width());
-      }
-    }
-  }
 
 
-
-  void GetAllChannels(int x, int y, T* out) const {
-    memcpy(static_cast<void*>(out),
-           static_cast<const void*>(GetPointer(x, y, 0)),
-           PixelSizeBytes());
-  }
-
-  void Set(int x, int y, int c, const T& val) {
-    *(buf_ + (row_stride_* y) + (x* Channels()) + c) = val;
-  }
-
-  void SetAllChannels(int x, int y, const T* values) {
-    memcpy(static_cast<void*>(GetPointer(x, y, 0)),
-           static_cast<const void*>(values), Channels() * sizeof(T));
-  }
 
   bool Resize(int new_w, int new_h, int new_c) {
     if (new_w < 0 || new_h < 0 || new_c < 0) {
       return false;
-    } else if (!IsChannelCountDynamic() && new_c != Channels()) {
+    } else if (!SelfT::IsChannelCountDynamic() && new_c != Channels()) {
       return false;
     } else {
       AllocateHelper(new_w, new_h, new_c);
@@ -265,13 +275,14 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   }
 
 
+  // TODO(cbraley): Move Allocate functions into base class!
+
   void Allocate(int new_w, int new_h) {
     return AllocateHelper(new_w, new_h, Channels());
   }
 
   void Allocate(int new_w, int new_h, int new_c) {
-    // TODO(cbraley): Why can't I static_assert a constexpr?
-    static_assert(!ChannelCountKnownAtCompileTime::value,
+    static_assert(SelfT::IsChannelCountDynamic(),
                   "The 3 argument form of Allocate, "
                   "Allocate(width, height, channels), "
                   "can only be called using images that have a dynamic "
@@ -294,11 +305,11 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
     assert(new_w >= 0);
     assert(new_h >= 0);
     AssertInvariants();
-    if (this->IsChannelCountStatic()) {
+    if (ImageTraits<SelfT>::ChannelCountKnownAtCompileTime::value) {
       assert(new_c == Channels());
       new_c = Channels();
     } else {
-      assert(this->IsChannelCountDynamic());
+      assert(!ImageTraits<SelfT>::ChannelCountKnownAtCompileTime::value);
       assert(new_c > 0);
     }
 
@@ -321,7 +332,7 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
     // is necessary since we memcmp buffers to compare images.  If we don't
     // memset things to 0 here; the padding bytes end up affecting the
     // comparison results.
-    memset(static_cast<void*>(new_buf), 0, total_bytes);
+    //memset(static_cast<void*>(new_buf), 0, total_bytes);
 
     if (owns_data_) {
       allocator_.deallocate(buf_, old_data_numel);
@@ -350,20 +361,15 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   // We need to be friends with other template variants.
   template <typename T_FRIEND, int ChannelsFriend, typename AllocatorFriend>
   friend class ImageBuf;
-  // The stream insertion operator needs to be friends.
-  template <typename T_FRIEND, int ChannelsFriend, typename AllocatorFriend>
-  friend std::ostream& operator<<(
-      std::ostream& os,
-      const ImageBuf<T_FRIEND, ChannelsFriend, AllocatorFriend>& image);
 };
 
-template <typename T, int NumChannels, typename Allocator>
-std::ostream& operator<<(std::ostream& os,
-                         const ImageBuf<T, NumChannels, Allocator>& image) {
+
+template<typename ImageImplT>
+std::ostream& operator<<(std::ostream& os, const ImageBase<ImageImplT>& image) {
   os << "ImageBuf with width=" << image.Width() << ", height=" << image.Height()
      << " and " << image.Channels() << " "
-     << (image.IsChannelCountDynamic() ? "dynamic" : "static") << " channels."
-     << " row stride = " << image.row_stride_ << ". ";
+     << (ImageBase<ImageImplT>::IsChannelCountDynamic() ? "dynamic" : "static") << " channels.";
+  // TODO(cbraley): Print debug info here about the ImageImplT type.
 
   // If there are too many pixels to reasonably look at, don't flood
   // the console.
@@ -420,17 +426,17 @@ bool operator==(const ImageBase<ImageImplLhsT> &lhs,
   if (lhs.PixelSizeBytes() != rhs.PixelSizeBytes()) {
     return false;
   }
-  if (!std::is_same<typename ImageImplLhsT::PixelT,
-                    typename ImageImplRhsT::PixelT>::value) {
+  if (!std::is_same<typename ImageTraits<ImageImplLhsT>::ChannelT,
+                    typename ImageTraits<ImageImplRhsT>::ChannelT>::value) {
     return false;
   }
 
 
-  // If both images are contiguous we can do a single memcmp, whereas if either 
+  // If both images are contiguous we can do a single memcmp, whereas if either
   // image is not we must compare rows individually.
   if (lhs.IsMemoryContiguous() && rhs.IsMemoryContiguous()) {
     assert(lhs.TotalByteCount() == rhs.TotalByteCount());
-    return memcmp(lhs.GetRow(0), rhs.GetRow(0), lhs.TotalByteCount()) == 0; 
+    return memcmp(lhs.GetRow(0), rhs.GetRow(0), lhs.TotalByteCount()) == 0;
   } else {
     assert(lhs.RowSizeBytes() == rhs.RowSizeBytes());
     const std::size_t row_bytes = lhs.RowSizeBytes();
