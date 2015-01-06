@@ -14,6 +14,117 @@ TEST(JRImageBuf_Allocators, PixelSetters) {
   jr::ImageBuf<float, 3, jr::AlignedAllocator<float>> a;
 }
 
+TEST(JRImageBuf, MemSafetyAndCopying) {
+  jr::ImageBuf<int> image(100, 100, 3);
+  EXPECT_EQ(image.Width(), 100);
+  EXPECT_EQ(image.Height(), 100);
+  EXPECT_EQ(image.Channels(), 3);
+}
+
+TEST(JRImageBuf, Subwindows) {
+  jr::ImageBuf<int, 2> image(3, 2);
+  image.Set(0, 0, 0, 12);
+  image.Set(1, 0, 0, 13);
+  image.Set(2, 0, 0, 14);
+  image.Set(0, 1, 0, 2);
+  image.Set(1, 1, 0, 3);
+  image.Set(2, 1, 0, 4);
+
+  image.Set(0, 0, 1, 5);
+  image.Set(1, 0, 1, 6);
+  image.Set(2, 0, 1, 7);
+  image.Set(0, 1, 1, 8);
+  image.Set(1, 1, 1, 9);
+  image.Set(2, 1, 1, 10);
+
+  // channel 0
+  // [ 12  13   14 ]
+  // [  2   3    4 ]
+
+  // channel 1
+  // [ 5  6   7 ]
+  // [ 8  9  10 ]
+
+  EXPECT_EQ(image.Width(), 3);
+  EXPECT_EQ(image.Height(), 2);
+  EXPECT_EQ(image.Channels(), 2);
+  EXPECT_EQ(image, image);
+
+  // Take a subwindow of full size.  This subwindow should contain
+  // the same pixel data.
+  {
+    jr::ImageBuf<int, 2> win;
+    bool success = image.GetWindow(0, 0, 3, 2, win);
+    EXPECT_TRUE(success);
+    EXPECT_EQ(image, win);
+  }
+
+  // Take single pixel subwindows.
+  {
+    bool success = false;
+    for (int y = 0; y < image.Height(); ++y) {
+      for (int x = 0; x < image.Width(); ++x) {
+        jr::ImageBuf<int, 2> win, win_2;
+        success = image.GetWindow(x, y, 1, 1, win);
+        image.GetWindow(x, y, 1, 1, win_2);
+        EXPECT_EQ(win, win_2);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(1, win.Width());
+        EXPECT_EQ(1, win.Height());
+        for (int c = 0; c < 2; ++c) {
+          EXPECT_EQ(image.Get(x, y, c), win.Get(0, 0, c));
+        }
+      }
+    }
+  }
+
+  // Make sure invalid subwindows return false.
+  {
+    bool success = true;
+    jr::ImageBuf<int, 2> win;
+
+    success = true;
+    success = image.GetWindow(0, -1, 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(-1, 0, 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(image.Width(), 0, 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(0, image.Height(), 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(0, 0, image.Width() + 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(0, 0, 1, image.Height() + 1, win);
+    EXPECT_FALSE(success);
+  }
+}
+
+TEST(JRImageBuf, DeepComparison) {
+  // Two images that point to the same thing are the same thing are the same.
+  jr::ImageBuf<unsigned char, 4> a, *b;
+  b = &a;
+  EXPECT_TRUE(a.Resize(100, 200, 4));
+  EXPECT_EQ(a, *b);
+
+  // Two images that are deep copies of each other should compare the same.
+  jr::ImageBuf<unsigned char, 4> c, d;
+  a.CopyInto(c);
+  a.CopyInto(d);
+  EXPECT_EQ(a, c);
+  EXPECT_EQ(*b, c);
+  EXPECT_EQ(a, d);
+  EXPECT_EQ(*b, d);
+}
 
 TEST(JRImageBuf, AllocateReallocation) {
   // Construct an image.
@@ -52,6 +163,18 @@ TEST(JRImageBuf_Stress, MemoryBugRepro) {
   EXPECT_EQ(image.Width(), 2);
   EXPECT_EQ(image.Height(), 4);
   EXPECT_EQ(image.Channels(), 4);
+}
+
+TEST(JRImageBuf, SimpleSetAllChannels) {
+  jr::ImageBuf<float> image(100, 200, 4);
+  const float TEST_VAL = 12.0f;
+  image.Set(12, 44, 2, TEST_VAL);
+  image.Set(12, 44, 0, 13);
+
+  float buf[4];
+  image.GetAllChannels(12, 44, buf);
+  EXPECT_EQ(TEST_VAL, buf[2]);
+  EXPECT_EQ(13, buf[0]);
 }
 
 // Set random pixel values many times and make sure we can read the
@@ -109,20 +232,22 @@ TEST(JRImageBuf_Stress, PixelSetters) {
       jr::ImageBuf<float> le_copy;
       image.CopyInto(le_copy);
 
-      EXPECT_EQ(value, le_copy.Get(x, y, c));
+      ASSERT_EQ(value, le_copy.Get(x, y, c));
       le_copy.GetAllChannels(x, y, buf);
-      EXPECT_EQ(value, buf[c]);
+      ASSERT_EQ(value, buf[c]);
 
-      // Now, set all channgels.
+      // Now, set all channels.
       for (int chan = 0; chan < image.Channels(); ++chan) {
         buf[chan] = values(gen);
       }
       image.SetAllChannels(x, y, buf);
       for (int chan = 0; chan < image.Channels(); ++chan) {
-        EXPECT_EQ(buf[chan], image.Get(x, y, chan));
+        ASSERT_EQ(buf[chan], image.Get(x, y, chan))
+            << "Expected channel " << chan << " location ("
+            << x << ", " << y << ")";
       }
       image.GetAllChannels(x, y, buf2);
-      EXPECT_EQ(0, memcmp(static_cast<const void*>(buf),
+      ASSERT_EQ(0, memcmp(static_cast<const void*>(buf),
                           static_cast<const void*>(buf2),
                           image.Channels() * sizeof(float)));
     }

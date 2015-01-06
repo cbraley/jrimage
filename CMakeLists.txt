@@ -36,10 +36,11 @@ else()
   set(BTAG "debug")
   set(CMAKE_BUILD_TYPE Debug)
 endif()
+add_definitions(-DJRIMAGE_BUILD_CONFIG=${BTAG})
 
 #  Set mode-dependent compiler flags.
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG -S")
-set(CMAKE_CXX_FLAGS_RELEASE "-fno-strict-aliasing -O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-Wall -g -O0 -DDEBUG -fno-inline")
+set(CMAKE_CXX_FLAGS_RELEASE "-fno-strict-aliasing -O3 -DNDEBUG -finline")
 
 # Set compiler flags for each build confg.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
@@ -48,10 +49,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fshow-source-location -fcaret-diagnosti
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcolor-diagnostics")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-format=vi")
 
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -DDEBUG")
+message(STATUS "Debug flags: ${CMAKE_CXX_FLAGS_DEBUG}")
+message(STATUS "Compiler flags: ${CMAKE_CXX_FLAGS}")
 
 # TODO(cbraley): Turn back on address sanitizer once Apple ships an updated Clang.
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=alignment")
+#set(NCMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=alignment")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=bounds")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=float-divide-by-zero")
 
