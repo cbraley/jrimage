@@ -153,20 +153,17 @@ class ImageBase {
            PixelSizeBytes());
   }
 
-  ImageImplT GetWindow(int x, int y, int width, int height,
-                       bool* success = nullptr) const {
+  bool GetWindow(int x, int y, int width, int height,
+                 ImageImplT& result_window) const {
     // Ensure that the window location is valid.
     const bool window_loc_okay =
         InBounds(x, y) && InBounds(x + width - 1, y + height - 1);
-    jr::template_utils::SetIfNonNull(window_loc_okay, success);
     // If the location is valid, make the implementation class return a
     // window into the image.
     if (window_loc_okay) {
-      std::cout << "Good!" << std::endl;
-      return Impl().GetWin(x, y, width, height);
+      return Impl().GetWin(x, y, width, height, result_window);
     } else {
-      std::cout << "Bad!" << std::endl;
-      return ImageImplT();
+      return false;
     }
   }
 
@@ -184,9 +181,10 @@ class ImageBase {
 
     // TODO(cbraley): Remove this limitation and allow casting and conversions....
     // maybe do this via  a separate function with a diff name?
-    static_assert(std::is_same<typename ImageTraits<ImageImplT>::ChannelT,
-                               typename ImageTraits<ImageImplOtherT>::ChannelT>::value,
-                  "Channel types must match!");
+    static_assert(
+        std::is_same<typename ImageTraits<ImageImplT>::ChannelT,
+                     typename ImageTraits<ImageImplOtherT>::ChannelT>::value,
+        "Channel types must match!");
 
     // Copy the data over.
     if (IsMemoryContiguous()) {
@@ -215,9 +213,8 @@ class ImageBase {
   }
 
   // No copy construction or assignment allowed.
-  //ImageBase(const ImageBase&) = delete;
-  //ImageBase& operator=(const ImageBase&) = delete;
-  // TODO(cbraley): Decide!
+  ImageBase(const ImageBase&) = delete;
+  ImageBase& operator=(const ImageBase&) = delete;
 
  protected:
   // No construction of any kind is allowed, unless calling from the initializer
@@ -292,10 +289,14 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
     return row_stride_ * sizeof(T) * Height();
   }
 
+  // TODO(cbraley): Diff allocators and channel counts!
+  // TODO(cbraley): Rename? and make private.
+  inline bool GetWin(int x, int y, int width, int height,
+                     ImageBuf<T, NumChannels, Allocator>& window) const {
+    // First, free any memory the image may own.  This invalidates all
+    // windows into that data.
+    window.FreeMemIfOwned();
 
-  inline ImageBuf<T, NumChannels, Allocator>
-  GetWin(int x, int y, int width, int height) const {
-    SelfT window;
     window.w_ = width;
     window.h_ = height;
     window.c_ = c_;
@@ -303,7 +304,7 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
     window.owns_data_ = false;
     window.allocator_ = allocator_;
     window.row_stride_ = row_stride_ + ((Width() - width) * Channels());
-    return window;
+    return true;
   }
 
   bool Resize(int new_w, int new_h, int new_c) {
@@ -345,6 +346,8 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
 
   // Stride between rows in terms of T's.
   std::size_t row_stride_;
+
+  void FreeMemIfOwned();
 
   void AllocateHelper(int new_w, int new_h, int new_c) {
     assert(new_w >= 0);
@@ -400,9 +403,8 @@ class ImageBuf : public ImageBase<ImageBuf<T, NumChannels, Allocator>> {
   }
 
   // No default construction or copying of jr::ImageBuf objects.
-  //ImageBuf(const ImageBuf& other) = delete;
-  //ImageBuf& operator=(const ImageBuf& other) = delete;
-  // TODO(cbraley): Decide!
+  ImageBuf(const ImageBuf& other) = delete;
+  ImageBuf& operator=(const ImageBuf& other) = delete;
 
   // We need to be friends with other template variants.
   template <typename T_FRIEND, int ChannelsFriend, typename AllocatorFriend>
@@ -509,6 +511,13 @@ ImageBuf<T, NumChannels, Allocator>::ImageBuf()
 
 template <typename T, int NumChannels, typename Allocator>
 ImageBuf<T, NumChannels, Allocator>::~ImageBuf() {
+  FreeMemIfOwned();
+}
+
+template<typename T, int NumChannels, typename Allocator>
+void ImageBuf<T, NumChannels, Allocator>::FreeMemIfOwned() {
+  // TODO(cbraley): Make a thread safe version of this class that cleans up here in all
+  // subwindows.
   if (owns_data_) {
     allocator_.deallocate(buf_, Width() * Height() * Channels());
   }

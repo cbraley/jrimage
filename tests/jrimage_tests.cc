@@ -14,6 +14,13 @@ TEST(JRImageBuf_Allocators, PixelSetters) {
   jr::ImageBuf<float, 3, jr::AlignedAllocator<float>> a;
 }
 
+TEST(JRImageBuf, MemSafetyAndCopying) {
+  jr::ImageBuf<int> image(100, 100, 3);
+  EXPECT_EQ(image.Width(), 100);
+  EXPECT_EQ(image.Height(), 100);
+  EXPECT_EQ(image.Channels(), 3);
+}
+
 TEST(JRImageBuf, Subwindows) {
   jr::ImageBuf<int, 2> image(3, 2);
   image.Set(0, 0, 0, 12);
@@ -41,18 +48,65 @@ TEST(JRImageBuf, Subwindows) {
   EXPECT_EQ(image.Width(), 3);
   EXPECT_EQ(image.Height(), 2);
   EXPECT_EQ(image.Channels(), 2);
+  EXPECT_EQ(image, image);
 
-  // Take a subwindow of full size.  This subwindow should contain 
+  // Take a subwindow of full size.  This subwindow should contain
   // the same pixel data.
-  bool success = false;
-  jr::ImageBuf<int, 2> win = image.GetWindow(0, 0, 3, 2, &success);
-  EXPECT_TRUE(success);
-  EXPECT_EQ(image, win) << "Expected " << image << " == " << win;
+  {
+    jr::ImageBuf<int, 2> win;
+    bool success = image.GetWindow(0, 0, 3, 2, win);
+    EXPECT_TRUE(success);
+    EXPECT_EQ(image, win);
+  }
 
+  // Take single pixel subwindows.
+  {
+    bool success = false;
+    for (int y = 0; y < image.Height(); ++y) {
+      for (int x = 0; x < image.Width(); ++x) {
+        jr::ImageBuf<int, 2> win, win_2;
+        success = image.GetWindow(x, y, 1, 1, win);
+        image.GetWindow(x, y, 1, 1, win_2);
+        EXPECT_EQ(win, win_2);
+        EXPECT_TRUE(success);
+        EXPECT_EQ(1, win.Width());
+        EXPECT_EQ(1, win.Height());
+        for (int c = 0; c < 2; ++c) {
+          EXPECT_EQ(image.Get(x, y, c), win.Get(0, 0, c));
+        }
+      }
+    }
+  }
 
+  // Make sure invalid subwindows return false.
+  {
+    bool success = true;
+    jr::ImageBuf<int, 2> win;
 
+    success = true;
+    success = image.GetWindow(0, -1, 1, 1, win);
+    EXPECT_FALSE(success);
 
+    success = true;
+    success = image.GetWindow(-1, 0, 1, 1, win);
+    EXPECT_FALSE(success);
 
+    success = true;
+    success = image.GetWindow(image.Width(), 0, 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(0, image.Height(), 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(0, 0, image.Width() + 1, 1, win);
+    EXPECT_FALSE(success);
+
+    success = true;
+    success = image.GetWindow(0, 0, 1, image.Height() + 1, win);
+    EXPECT_FALSE(success);
+  }
 }
 
 TEST(JRImageBuf, DeepComparison) {
@@ -70,8 +124,6 @@ TEST(JRImageBuf, DeepComparison) {
   EXPECT_EQ(*b, c);
   EXPECT_EQ(a, d);
   EXPECT_EQ(*b, d);
-  
-  // TODO(cbraley): Test subwindows.
 }
 
 
