@@ -39,8 +39,8 @@ else()
 endif()
 
 #  Set mode-dependent compiler flags.
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG -S")
-set(CMAKE_CXX_FLAGS_RELEASE "-fno-strict-aliasing -O3 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_DEBUG "-Wall -g -O0 -DDEBUG -fno-inline")
+set(CMAKE_CXX_FLAGS_RELEASE "-fno-strict-aliasing -O3 -DNDEBUG -finline")
 
 # Set compiler flags for each build confg.
 set(DONT_WARN_ON_UNUSED "-Wno-unused-variable -Wno-unused-parameter -Wno-unused-function")
