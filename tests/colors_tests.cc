@@ -27,6 +27,7 @@ namespace jr {
                "Color< #CS, short> wasn't trivially copyable.")
 
 ENSURE_TRIVIALLY_COPYABLE_FOR_ALL_TYPES(ColorSpaceXYZ);
+ENSURE_TRIVIALLY_COPYABLE_FOR_ALL_TYPES(ColorSpaceSRGB);
 
 
 
@@ -36,7 +37,6 @@ TEST(JRImageColor, ColorBasics) {
   Color<ColorSpaceSRGB, uint8_t> ldr_srgb;
 }
 
-
 TEST(JRImageColor, LinearConversions) {
   std::unique_ptr<Color<ColorSpaceXYZ, float>> hdr_xyz_1(
       new Color<ColorSpaceXYZ, float>[100]);
@@ -44,7 +44,6 @@ TEST(JRImageColor, LinearConversions) {
       new Color<ColorSpaceXYZ, float>[100]);
   
   ConvertColorSpace(hdr_xyz_1.get(), hdr_xyz_2.get(), 100);
-
 }
 
 }  // namespace jr

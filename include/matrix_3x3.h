@@ -5,6 +5,8 @@
 
 namespace jr {
 
+/// 3x3 matrix class.  All functions are constexpr so they can be evaluated at
+/// compile time if their arguments are constexpr.
 template<typename NumericT>
 class CTMat3x3 {
  public:

@@ -2,12 +2,14 @@
 #define JRIMAGE_COLOR_H_
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <cassert>
 #include <type_traits>
 
 #include "template_utils.h"
 #include "matrix_3x3.h"
+#include "srgb_utils.h"
 
 namespace jr {
 
@@ -28,6 +30,8 @@ class Color {
 
   // Numeric type used to store data values.
   typedef ChannelT ChannelType;
+
+  // TODO(cbraley): Include member functions that do the conversions.
 
   // Numeric type used for intermediate computations.  For integer types,
   // we perform intermediate computation with single precision floats.  For
@@ -77,6 +81,21 @@ class ColorSpaceXYZ {
       0.0, 0.0, 1.0);
 };
 
+// Linear RGB color using the primaries specefied in ITU-R eccommendation
+// BT.709.
+class ColorSpaceLinearRGBRec709 {
+ public:
+  typedef std::integral_constant<bool, true> is_linear;
+
+  // sRGB color is not perceptually uniform.
+  typedef std::integral_constant<bool, false> is_perceptually_uniform;
+
+  // This matrix takes linear RGB rec 709 values to XYZ.
+  static constexpr ColorTransformationMat MATRIX_TO_XYZ = ColorTransformationMat(
+      0.4360747,  0.3850649,  0.1430804,
+      0.2225045,  0.7168786,  0.0606169,
+      0.0139322,  0.0971045,  0.7141733);
+};
 
 
 // sRGB color space.
@@ -93,8 +112,24 @@ class ColorSpaceSRGB {
   template<typename ChannelT>
   static constexpr Color<ColorSpaceXYZ, ChannelT> ToXYZ(
       const Color<ColorSpaceSRGB, ChannelT>& from) {
-    return Color<ColorSpaceXYZ, ChannelT>();
+    // First, linearize the RGB values.
+    typedef typename Color<ColorSpaceXYZ, ChannelT>::WorkingChannelTypeT WorkT;
+    Color<ColorSpaceLinearRGBRec709, WorkT> linearized(0.0);
+    linearized.values[0] = jr::LinearizesRGBValue(from.values[0]);
+    linearized.values[1] = jr::LinearizesRGBValue(from.values[1]);
+    linearized.values[2] = jr::LinearizesRGBValue(from.values[2]);
+
+    // The final step of the conversion is a matrix multiply.
+    constexpr ColorTransformationMat color_conv_matrix =
+        Color<ColorSpaceXYZ, ChannelT>::MATRIX_TO_XYZ;
+    Color<ColorSpaceXYZ, ChannelT> out_xyz(0.0);
+    MatrixTimesVector(color_conv_matrix,
+                      linearized.values,
+                      out_xyz.values);
+    return out_xyz;
   }
+
+
   template<typename ChannelT>
   static constexpr Color<ColorSpaceSRGB, ChannelT> FromXYZ(
       const Color<ColorSpaceXYZ, ChannelT>& from) {
@@ -201,7 +236,7 @@ void ColorConvertImpl(
       ColorSpaceFrom::MATRIX_TO_XYZ * Inverse(ColorSpaceTo::MATRIX_TO_XYZ);
 
   // Perform N=count matrix multiplies.
-  // TODO(cbraley): Speed this upwith SEE intrinsics.
+  // TODO(cbraley): Speed this up with SEE intrinsics.
   for (int i = 0; i < count; ++i) {
     const ChannelT *from_data_ptr = from_data[i].values;
     ChannelT* to_data_ptr = to_data[i].values;
@@ -236,7 +271,6 @@ void ColorConvertImpl(
     const Color<ColorSpaceFrom, ChannelT> *from_data,
     Color<ColorSpaceTo, ChannelT> *to_data, int count,
     std::false_type, std::true_type) {
-  std::cout << "nonlinear to linear!" << std::endl;
   for (int i = 0; i < count; ++i) {
     // Apply nonlinear function to convert to XYZ.
     Color<ColorSpaceXYZ, ChannelT> xyz;
@@ -257,7 +291,14 @@ void ColorConvertImpl(
     const Color<ColorSpaceFrom, ChannelT> *from_data,
     Color<ColorSpaceTo, ChannelT> *to_data, int count,
     std::false_type, std::false_type) {
-  std::cout << "nonlinear to nonlinear!" << std::endl;
+
+  for (int i = 0; i < count; ++i) {
+    const Color<ColorSpaceFrom, ChannelT>&  from = from_data[i];
+    Color<ColorSpaceTo, ChannelT>&          to   = to_data  [i];
+
+    Color<ColorSpaceXYZ, ChannelT> temp_xyz = ColorSpaceFrom::ToXYZ(from);
+    to = ColorSpaceTo::FromXYZ(temp_xyz);
+  }
 }
 
 template<typename ChannelT, typename WorkingChannelTypeT>
